@@ -14,7 +14,7 @@ env:
   REGION: us-central1
   SERVICE: sgl-jax-dashboard
   WIF_PROVIDER: projects/785128357837/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
-  WIF_SA: sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com
+  DEPLOY_SA: sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com
 
 jobs:
   cleanup:
@@ -23,7 +23,7 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.WIF_SA }}
+          service_account: ${{ env.DEPLOY_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
 

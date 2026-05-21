@@ -20,7 +20,9 @@
 | Cloud Run 服务名 | `sgl-jax-dashboard` |
 | 区域 | `us-central1`（bucket 位于 `US` 多区域，同大陆零出站费用） |
 | 运行时 SA | `sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com` |
-| SA 权限 | bucket 上的 `roles/storage.objectViewer`，无项目级权限 |
+| 运行时 SA 权限 | bucket 上的 `roles/storage.objectViewer`，无项目级权限 |
+| 部署 SA | `sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com` |
+| 部署 SA 权限 | `roles/run.admin`、`roles/cloudbuild.builds.editor`、`roles/iam.serviceAccountUser`、`roles/artifactregistry.writer`、`roles/storage.admin` |
 | 访问控制 | 公开（`--allow-unauthenticated`），内容为非敏感 TPU CI 指标 |
 | 资源配置 | 1 vCPU / 512 Mi / 最大 3 实例 / 支持缩容至零 |
 | 环境变量 | `GCS_BUCKET=observability-storage-sglang` |
@@ -91,17 +93,25 @@ PR 预览 URL 格式：`https://pr-{number}---sgl-jax-dashboard-785128357837.us-
 已配置完成，以下为参考：
 
 - Workload Identity Pool: `github-actions`（项目 `tpu-service-473302`）
-- OIDC Provider: `github-oidc`（限制 `repository_owner == 'primatrix'`）
-- 部署 SA: `sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com`
-- SA 项目级角色: `roles/run.admin`、`roles/cloudbuild.builds.editor`、`roles/iam.serviceAccountUser`
+- OIDC Provider: `github-oidc`（限制 `assertion.repository == 'primatrix/sgl-jax-dashboard'`）
+- 部署 SA: `sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com`
+- 运行时 SA: `sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com`（仅 `roles/storage.objectViewer`）
+- 部署 SA 项目级角色: `roles/run.admin`、`roles/cloudbuild.builds.editor`、`roles/iam.serviceAccountUser`、`roles/artifactregistry.writer`、`roles/storage.admin`
 
 ## 手动部署
 
-```bash
-make deploy
-```
+部署由 GitHub Actions 自动处理（见 CI/CD 章节）。如需手动部署：
 
-部署参数已配置在 `Makefile` 中，无需手动拼写 gcloud 命令。
+```bash
+gcloud run deploy sgl-jax-dashboard \
+  --source=. \
+  --region=us-central1 \
+  --project=tpu-service-473302 \
+  --service-account=sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com \
+  --allow-unauthenticated \
+  --set-env-vars=GCS_BUCKET=observability-storage-sglang \
+  --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0
+```
 
 首次部署耗时 5-8 分钟（冷启动 Cloud Build、拉取基础镜像、npm ci、构建）。后续部署约 2-3 分钟（依赖缓存生效）。
 
@@ -111,11 +121,7 @@ Cloud Build 使用 `.gcloudignore` 决定上传内容；若缺失则回退到 `.
 
 ## 重新部署
 
-```bash
-make deploy
-```
-
-`--service-account`、`--allow-unauthenticated`、环境变量等会沿用上次部署的配置，仅在需要修改时重新指定。
+推送到 `main` 分支即可触发自动部署。`--service-account`、`--allow-unauthenticated`、环境变量等会沿用上次部署的配置。
 
 ## 故障排查
 

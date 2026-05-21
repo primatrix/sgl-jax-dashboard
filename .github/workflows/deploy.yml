@@ -13,7 +13,8 @@ env:
   REGION: us-central1
   SERVICE: sgl-jax-dashboard
   WIF_PROVIDER: projects/785128357837/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
-  WIF_SA: sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com
+  DEPLOY_SA: sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com
+  RUNTIME_SA: sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com
 
 jobs:
   deploy:
@@ -32,7 +33,7 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.WIF_SA }}
+          service_account: ${{ env.DEPLOY_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
 
@@ -42,7 +43,7 @@ jobs:
             --source=. \
             --region=$REGION \
             --project=$GCP_PROJECT \
-            --service-account=$WIF_SA \
+            --service-account=$RUNTIME_SA \
             --allow-unauthenticated \
             --set-env-vars=GCS_BUCKET=observability-storage-sglang \
             --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0
