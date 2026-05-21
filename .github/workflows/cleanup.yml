@@ -9,27 +9,20 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  GCP_PROJECT: tpu-service-473302
-  REGION: us-central1
-  SERVICE: sgl-jax-dashboard
-  WIF_PROVIDER: projects/785128357837/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
-  DEPLOY_SA: sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com
-
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ env.WIF_PROVIDER }}
-          service_account: ${{ env.DEPLOY_SA }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
 
       - name: Remove preview tag
         run: |
-          gcloud run services update-traffic $SERVICE \
-            --region=$REGION \
-            --project=$GCP_PROJECT \
+          gcloud run services update-traffic ${{ vars.SERVICE }} \
+            --region=${{ vars.REGION }} \
+            --project=${{ vars.GCP_PROJECT }} \
             --remove-tags=pr-${{ github.event.pull_request.number }}
