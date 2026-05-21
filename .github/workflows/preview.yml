@@ -1,0 +1,72 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: make check
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy preview
+        run: |
+          gcloud run deploy ${{ vars.SERVICE }} \
+            --source=. \
+            --region=${{ vars.REGION }} \
+            --project=${{ vars.GCP_PROJECT }} \
+            --service-account=${{ vars.RUNTIME_SA }} \
+            --allow-unauthenticated \
+            --set-env-vars=GCS_BUCKET=observability-storage-sglang \
+            --tag=pr-${{ github.event.pull_request.number }} \
+            --no-traffic \
+            --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0
+
+      - name: Get preview URL
+        id: url
+        run: |
+          URL=$(gcloud run services describe ${{ vars.SERVICE }} \
+            --region=${{ vars.REGION }} --project=${{ vars.GCP_PROJECT }} \
+            --format='value(status.traffic.url)' \
+            | tr ',' '\n' \
+            | grep "pr-${{ github.event.pull_request.number }}")
+          echo "preview_url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Find existing preview comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: "**Preview:**"
+
+      - name: Comment preview link
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Preview:** ${{ steps.url.outputs.preview_url }}
+          edit-mode: replace
