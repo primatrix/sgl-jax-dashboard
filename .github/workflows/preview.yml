@@ -1,0 +1,70 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  GCP_PROJECT: tpu-service-473302
+  REGION: us-central1
+  SERVICE: sgl-jax-dashboard
+  WIF_PROVIDER: projects/785128357837/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+  WIF_SA: sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: make check
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy preview
+        run: |
+          gcloud run deploy $SERVICE \
+            --source=. \
+            --region=$REGION \
+            --project=$GCP_PROJECT \
+            --service-account=$WIF_SA \
+            --allow-unauthenticated \
+            --set-env-vars=GCS_BUCKET=observability-storage-sglang \
+            --tag=pr-${{ github.event.pull_request.number }} \
+            --no-traffic \
+            --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0
+
+      - name: Get preview URL
+        id: url
+        run: |
+          URL=$(gcloud run services describe $SERVICE \
+            --region=$REGION --project=$GCP_PROJECT \
+            --format='value(status.traffic.url)' \
+            | tr ',' '\n' \
+            | grep "pr-${{ github.event.pull_request.number }}")
+          echo "preview_url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview link
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Preview:** ${{ steps.url.outputs.preview_url }}
+          comment-tag: preview-url

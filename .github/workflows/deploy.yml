@@ -1,0 +1,48 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT: tpu-service-473302
+  REGION: us-central1
+  SERVICE: sgl-jax-dashboard
+  WIF_PROVIDER: projects/785128357837/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+  WIF_SA: sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: make check
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --source=. \
+            --region=$REGION \
+            --project=$GCP_PROJECT \
+            --service-account=$WIF_SA \
+            --allow-unauthenticated \
+            --set-env-vars=GCS_BUCKET=observability-storage-sglang \
+            --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0

@@ -74,7 +74,28 @@ gcloud storage buckets get-iam-policy gs://observability-storage-sglang \
 
 预期输出：显示 `roles/storage.objectViewer` 的绑定。
 
-## 部署（每次发布执行）
+## CI/CD
+
+通过 GitHub Actions 自动部署，使用 Workload Identity Federation (WIF) 认证到 GCP，无需存储密钥。
+
+| 触发 | 工作流 | 行为 |
+| --- | --- | --- |
+| Push to main | `deploy.yml` | 运行 CI 检查后部署到生产（100% 流量） |
+| PR opened/updated | `preview.yml` | 运行 CI 检查后部署为 tagged revision（0% 流量），在 PR 评论中贴预览链接 |
+| PR closed | `cleanup.yml` | 移除对应的 revision tag |
+
+PR 预览 URL 格式：`https://pr-{number}---sgl-jax-dashboard-785128357837.us-central1.run.app`
+
+### WIF 配置
+
+已配置完成，以下为参考：
+
+- Workload Identity Pool: `github-actions`（项目 `tpu-service-473302`）
+- OIDC Provider: `github-oidc`（限制 `repository_owner == 'primatrix'`）
+- 部署 SA: `sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com`
+- SA 项目级角色: `roles/run.admin`、`roles/cloudbuild.builds.editor`、`roles/iam.serviceAccountUser`
+
+## 手动部署
 
 ```bash
 make deploy
