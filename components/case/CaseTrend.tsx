@@ -16,12 +16,16 @@ export function CaseTrend({ detail }: { detail: CaseSummary }) {
   const [error, setError] = useState<string | null>(null);
   const availableMetrics = metricsForType(detail.type);
 
-  useEffect(() => {
+  const detailKey = `${detail.type}|${detail.case}|${detail.profile}|${detail.target}`;
+  const [prevDetailKey, setPrevDetailKey] = useState(detailKey);
+  if (prevDetailKey !== detailKey) {
+    setPrevDetailKey(detailKey);
     setMetric(defaultMetric(detail.type));
-  }, [detail.type, detail.case, detail.profile, detail.target]);
+  }
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading state before fetch
     setSeries(null);
     setError(null);
     const q = new URLSearchParams({

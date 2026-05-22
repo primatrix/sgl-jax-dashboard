@@ -96,14 +96,20 @@ lib/
     cases-handler.ts            # /api/cases 业务逻辑
     case-handler.ts             # /api/case 业务逻辑
     timeseries-handler.ts       # /api/timeseries 业务逻辑
+.github/workflows/
+  deploy.yml                    # Push to main → 自动部署生产
+  preview.yml                   # PR → 部署预览环境
+  cleanup.yml                   # PR 关闭 → 清理预览
 docs/
   deployment.md                 # Cloud Run 部署指南
 tests/                          # vitest + RTL 测试
-Makefile                        # 开发、测试、部署命令
+Makefile                        # 开发、测试命令
 ```
 
 测试通过 `GcsClient` 接口 stub `@google-cloud/storage`，无需网络访问或 ADC 凭证。
 
 ## 部署
 
-部署至 Cloud Run，详见 [deployment.md](./docs/deployment.md)。
+通过 GitHub Actions 自动部署至 Cloud Run：push to main 部署生产，PR 自动创建预览环境。详见 [deployment.md](./docs/deployment.md)。
+
+生产地址：https://sgl-jax-dashboard-785128357837.us-central1.run.app/

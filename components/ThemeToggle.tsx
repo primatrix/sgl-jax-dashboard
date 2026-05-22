@@ -42,6 +42,7 @@ export function ThemeToggle() {
   const [theme, setThemeState] = useState<Theme>("system");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration: localStorage only available client-side
     setThemeState(readStored());
   }, []);
 

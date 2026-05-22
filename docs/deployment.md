@@ -47,9 +47,53 @@ gcloud storage buckets add-iam-policy-binding gs://observability-storage-sglang 
   --role="roles/storage.objectViewer"
 ```
 
-### 3. 允许你的账号扮演运行时 SA
+### 3. 创建部署服务账号
 
-`gcloud run deploy` 需要此权限来将 SA 绑定到服务。
+部署 SA 仅供 GitHub Actions CI/CD 使用，与运行时 SA 分离以遵循最小权限原则。
+
+```bash
+gcloud iam service-accounts create sgl-jax-dashboard-deployer \
+  --project=tpu-service-473302 \
+  --display-name="sgl-jax-dashboard GitHub Actions deployer"
+```
+
+### 4. 授予部署 SA 所需权限
+
+```bash
+for role in roles/run.admin roles/cloudbuild.builds.editor \
+            roles/iam.serviceAccountUser roles/artifactregistry.writer \
+            roles/storage.admin; do
+  gcloud projects add-iam-policy-binding tpu-service-473302 \
+    --member="serviceAccount:sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com" \
+    --role="$role" --condition=None
+done
+```
+
+### 5. 配置 Workload Identity Federation
+
+创建 WIF Pool、OIDC Provider，并绑定到部署 SA：
+
+```bash
+gcloud iam workload-identity-pools create github-actions \
+  --location=global --project=tpu-service-473302
+
+gcloud iam workload-identity-pools providers create-oidc github-oidc \
+  --workload-identity-pool=github-actions \
+  --location=global --project=tpu-service-473302 \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition="assertion.repository=='primatrix/sgl-jax-dashboard'"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com \
+  --project=tpu-service-473302 \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/785128357837/locations/global/workloadIdentityPools/github-actions/attribute.repository/primatrix/sgl-jax-dashboard"
+```
+
+### 6. （可选）允许个人账号手动部署
+
+仅在需要 `gcloud run deploy` 手动部署时执行。
 
 ```bash
 gcloud iam service-accounts add-iam-policy-binding \
@@ -90,17 +134,17 @@ PR 预览 URL 格式：`https://pr-{number}---sgl-jax-dashboard-785128357837.us-
 
 ### WIF 配置
 
-已配置完成，以下为参考：
+已配置完成（设置步骤见上方"一次性初始设置"），以下为参考：
 
 - Workload Identity Pool: `github-actions`（项目 `tpu-service-473302`）
 - OIDC Provider: `github-oidc`（限制 `assertion.repository == 'primatrix/sgl-jax-dashboard'`）
 - 部署 SA: `sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com`
 - 运行时 SA: `sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com`（仅 `roles/storage.objectViewer`）
-- 部署 SA 项目级角色: `roles/run.admin`、`roles/cloudbuild.builds.editor`、`roles/iam.serviceAccountUser`、`roles/artifactregistry.writer`、`roles/storage.admin`
+- 部署配置（SA 邮箱、项目 ID 等）通过 [GitHub Actions Repository Variables](https://github.com/primatrix/sgl-jax-dashboard/settings/variables/actions) 管理，不硬编码在 workflow 文件中
 
 ## 手动部署
 
-部署由 GitHub Actions 自动处理（见 CI/CD 章节）。如需手动部署：
+日常部署由 GitHub Actions 自动处理（推送到 `main` 即触发）。如需手动部署：
 
 ```bash
 gcloud run deploy sgl-jax-dashboard \
@@ -113,15 +157,7 @@ gcloud run deploy sgl-jax-dashboard \
   --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0
 ```
 
-首次部署耗时 5-8 分钟（冷启动 Cloud Build、拉取基础镜像、npm ci、构建）。后续部署约 2-3 分钟（依赖缓存生效）。
-
-Cloud Build 使用 `.gcloudignore` 决定上传内容；若缺失则回退到 `.gitignore`。当前 `.gitignore` 已排除 `node_modules`、`.next`、`.superpowers`、`.harnessed`、`.claude`，无需额外操作。
-
-部署完成后会自动输出预览 URL。
-
-## 重新部署
-
-推送到 `main` 分支即可触发自动部署。`--service-account`、`--allow-unauthenticated`、环境变量等会沿用上次部署的配置。
+首次部署耗时 5-8 分钟，后续约 2-3 分钟（依赖缓存生效）。
 
 ## 故障排查
 
@@ -144,6 +180,10 @@ gcloud run services delete sgl-jax-dashboard \
 
 gcloud iam service-accounts delete \
   sgl-jax-dashboard-runtime@tpu-service-473302.iam.gserviceaccount.com \
+  --project=tpu-service-473302 --quiet
+
+gcloud iam service-accounts delete \
+  sgl-jax-dashboard-deployer@tpu-service-473302.iam.gserviceaccount.com \
   --project=tpu-service-473302 --quiet
 ```
 
