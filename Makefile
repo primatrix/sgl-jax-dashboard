@@ -21,4 +21,4 @@ typecheck:
 lint:
 	npm run lint
 
-check: typecheck test build
+check: lint typecheck test build

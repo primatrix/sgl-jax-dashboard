@@ -37,6 +37,7 @@ export function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset error before fetch
     setLoadError(null);
     fetch(`/api/cases?days=${days}`)
       .then(async (r) => {
@@ -62,18 +63,23 @@ export function Dashboard() {
     [selectors, selectorKeyState],
   );
   const activeType = activeSelector ? selectorType(cases, activeSelector) : undefined;
-  const availableMetrics: Metric[] = activeType ? metricsForType(activeType) : [];
+  const availableMetrics = useMemo<Metric[]>(
+    () => activeType ? metricsForType(activeType) : [],
+    [activeType],
+  );
 
-  // Reset metric when it doesn't apply to the new selector type.
-  useEffect(() => {
+  const [prevActiveType, setPrevActiveType] = useState(activeType);
+  if (prevActiveType !== activeType) {
+    setPrevActiveType(activeType);
     if (metric && availableMetrics.length > 0 && !availableMetrics.includes(metric)) {
       setMetric(null);
     }
-  }, [activeType, availableMetrics, metric]);
+  }
 
   useEffect(() => {
     if (!activeSelector) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading state before fetch
     setSeries(null);
     const q = new URLSearchParams({
       case: activeSelector.case,
