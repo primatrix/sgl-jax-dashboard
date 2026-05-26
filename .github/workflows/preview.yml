@@ -39,7 +39,7 @@ jobs:
             --project=${{ vars.GCP_PROJECT }} \
             --service-account=${{ vars.RUNTIME_SA }} \
             --allow-unauthenticated \
-            --set-env-vars=GCS_BUCKET=observability-storage-sglang \
+            --set-env-vars=GCS_BUCKET=${{ vars.GCS_BUCKET }} \
             --tag=pr-${{ github.event.pull_request.number }} \
             --no-traffic \
             --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0

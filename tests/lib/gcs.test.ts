@@ -1,25 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { listCases, type GcsClient } from "@/lib/gcs";
-
-function makeFakeClient(objects: Record<string, { body: string; updated: string }>): GcsClient {
-  return {
-    async listObjects(prefix) {
-      return Object.keys(objects)
-        .filter((n) => n.startsWith(prefix))
-        .map((name) => ({ name, updated: objects[name].updated }));
-    },
-    async getObject(name) {
-      const o = objects[name];
-      if (!o) throw new Error(`not found: ${name}`);
-      return o.body;
-    },
-    async statObject(name) {
-      const o = objects[name];
-      if (!o) throw new Error(`not found: ${name}`);
-      return { name, updated: o.updated };
-    },
-  };
-}
+import { describe, it, expect, vi } from "vitest";
+import { listCases } from "@/lib/cases-index";
+import { makeFakeGcsClient } from "../helpers/fixtures";
 
 const PERF = JSON.stringify({
   type: "perf", case: "bench", profile: "p", target: "v6e-4x4",
@@ -34,7 +15,7 @@ const ACC = JSON.stringify({
 describe("listCases", () => {
   it("lists case files across the last N days, skipping placeholders and logs/", async () => {
     const today = new Date("2026-05-19T00:00:00Z");
-    const client = makeFakeClient({
+    const client = makeFakeGcsClient({
       "2026-05-18/": { body: "", updated: "2026-05-18T00:00:00Z" },
       "2026-05-18/run-1/": { body: "", updated: "2026-05-18T00:00:00Z" },
       "2026-05-18/run-1/bench.json": { body: PERF, updated: "2026-05-18T01:00:00Z" },
@@ -54,7 +35,7 @@ describe("listCases", () => {
 
   it("respects the days window", async () => {
     const today = new Date("2026-05-19T00:00:00Z");
-    const client = makeFakeClient({
+    const client = makeFakeGcsClient({
       "2026-05-01/run-1/bench.json": { body: PERF, updated: "2026-05-01T00:00:00Z" },
       "2026-05-18/run-2/bench.json": { body: PERF, updated: "2026-05-18T00:00:00Z" },
     });
@@ -64,7 +45,7 @@ describe("listCases", () => {
 
   it("collects per-file parse errors but does not throw", async () => {
     const today = new Date("2026-05-19T00:00:00Z");
-    const client = makeFakeClient({
+    const client = makeFakeGcsClient({
       "2026-05-18/run-1/bad.json": { body: "not json", updated: "2026-05-18T00:00:00Z" },
       "2026-05-18/run-1/ok.json": { body: PERF, updated: "2026-05-18T00:00:00Z" },
     });
@@ -72,5 +53,29 @@ describe("listCases", () => {
     expect(cases).toHaveLength(1);
     expect(errors).toHaveLength(1);
     expect(errors[0].path).toBe("2026-05-18/run-1/bad.json");
+  });
+
+  it("writes a per-day index on first miss and reuses it on subsequent reads", async () => {
+    const today = new Date("2026-05-19T00:00:00Z");
+    const client = makeFakeGcsClient({
+      "2026-05-18/run-1/bench.json": { body: PERF, updated: "2026-05-18T01:00:00Z" },
+      "2026-05-19/run-2/bench.json": { body: PERF, updated: "2026-05-19T01:00:00Z" },
+    });
+    const getSpy = vi.spyOn(client, "getObject");
+
+    await listCases({ client, days: 7, now: today });
+
+    // Each of the two case files was downloaded exactly once.
+    expect(getSpy).toHaveBeenCalledTimes(2);
+    // Index objects for each touched day were written back.
+    expect(client.objects.has("_indexes/2026-05-18.json")).toBe(true);
+    expect(client.objects.has("_indexes/2026-05-19.json")).toBe(true);
+
+    getSpy.mockClear();
+    const second = await listCases({ client, days: 7, now: today });
+
+    // Cache hit on both days: zero raw-case downloads.
+    expect(getSpy).not.toHaveBeenCalled();
+    expect(second.cases).toHaveLength(2);
   });
 });

@@ -1,4 +1,49 @@
 import type { AccuracySummary, PerfSummary } from "@/lib/types";
+import type { GcsClient } from "@/lib/gcs";
+
+export type FakeObject = { body: string; updated: string };
+
+export type FakeGcsClient = GcsClient & {
+  // Direct access to the in-memory object store for assertions.
+  objects: Map<string, FakeObject>;
+};
+
+/**
+ * Build an in-memory GcsClient backed by a Map. Reads honor exact-key lookup;
+ * tryGetObject returns null on miss; putObject upserts; listObjects filters by
+ * prefix. Used across gcs/cases-index/api tests so the GCS contract is
+ * exercised consistently.
+ */
+export function makeFakeGcsClient(
+  initial: Record<string, FakeObject> = {},
+): FakeGcsClient {
+  const store = new Map<string, FakeObject>(Object.entries(initial));
+  return {
+    objects: store,
+    async listObjects(prefix) {
+      return Array.from(store.entries())
+        .filter(([name]) => name.startsWith(prefix))
+        .map(([name, o]) => ({ name, updated: o.updated }));
+    },
+    async getObject(name) {
+      const o = store.get(name);
+      if (!o) throw new Error(`not found: ${name}`);
+      return o.body;
+    },
+    async tryGetObject(name) {
+      const o = store.get(name);
+      return o ? o.body : null;
+    },
+    async putObject(name, body) {
+      store.set(name, { body, updated: new Date().toISOString() });
+    },
+    async statObject(name) {
+      const o = store.get(name);
+      if (!o) throw new Error(`not found: ${name}`);
+      return { name, updated: o.updated };
+    },
+  };
+}
 
 export function samplePerf(overrides: Partial<PerfSummary> = {}): PerfSummary {
   return {

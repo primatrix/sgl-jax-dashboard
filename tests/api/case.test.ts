@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { handleCase } from "@/lib/api/case-handler";
-import type { GcsClient } from "@/lib/gcs";
+import { makeFakeGcsClient } from "../helpers/fixtures";
 
 const FULL_PERF = JSON.stringify({
   type: "perf",
@@ -55,17 +55,10 @@ const FULL_PERF = JSON.stringify({
   server_info: { tp_size: 16, model_path: "/m" },
 });
 
-function client(): GcsClient {
-  return {
-    async listObjects() { return []; },
-    async getObject(name) {
-      if (name === "2026-05-19/run-1/bench.json") return FULL_PERF;
-      throw new Error("not found");
-    },
-    async statObject(name) {
-      return { name, updated: "2026-05-19T00:00:00Z" };
-    },
-  };
+function client() {
+  return makeFakeGcsClient({
+    "2026-05-19/run-1/bench.json": { body: FULL_PERF, updated: "2026-05-19T00:00:00Z" },
+  });
 }
 
 describe("GET /api/case", () => {

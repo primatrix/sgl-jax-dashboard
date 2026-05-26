@@ -1,6 +1,6 @@
 # sgl-jax-dashboard
 
-sglang-jax 多主机 TPU CI 测试结果的可观测性面板。从 `gs://observability-storage-sglang` 读取推理框架写入的原始 JSON 数据，展示最近的测试用例及趋势变化。
+sglang-jax 多主机 TPU CI 测试结果的可观测性面板。从一个 GCS bucket（运行时由 `GCS_BUCKET` 环境变量指定）读取推理框架写入的原始 JSON 数据，展示最近的测试用例及趋势变化。
 
 ## 环境要求
 
@@ -19,7 +19,9 @@ make dev
 
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `GCS_BUCKET` | `observability-storage-sglang` | GCS bucket 名称 |
+| `GCS_BUCKET` | （必须设置） | GCS bucket 名称 |
+| `SCHEDULER_SA_EMAIL` | （仅生产需要） | Cloud Scheduler 调用 `/api/rebuild-today` 的 SA 邮箱 |
+| `REBUILD_AUDIENCE` | （仅生产需要） | OIDC `aud` 校验值，即 Cloud Run 服务根 URL |
 
 复制 `.env.example` → `.env.local` 覆盖默认值。
 
@@ -34,10 +36,12 @@ make dev
 GCS bucket 目录结构：
 
 ```
-gs://observability-storage-sglang/
+gs://<GCS_BUCKET>/
   <YYYY-MM-DD>/
     <workload>/              # 例: gke-run-test-caces-25906727670
       <case-name>.json       # 每个测试用例一个 JSON 文件
+  _indexes/
+    <YYYY-MM-DD>.json        # 按天聚合的 summary 缓存（dashboard 自动生成）
 ```
 
 ### API 路由
@@ -111,5 +115,3 @@ Makefile                        # 开发、测试命令
 ## 部署
 
 通过 GitHub Actions 自动部署至 Cloud Run：push to main 部署生产，PR 自动创建预览环境。详见 [deployment.md](./docs/deployment.md)。
-
-生产地址：https://sgl-jax-dashboard-785128357837.us-central1.run.app/

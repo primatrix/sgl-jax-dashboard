@@ -28,7 +28,7 @@ export default async function CaseDetailPage({
   const { path } = await params;
   const fullPath = path.map((p) => decodeURIComponent(p)).join("/");
 
-  const bucket = process.env.GCS_BUCKET ?? "observability-storage-sglang";
+  const bucket = process.env.GCS_BUCKET ?? "your-gcs-bucket-name";
   const client = await createDefaultClient(bucket);
   const result = await getDetail({ client, path: fullPath });
   if (!result.ok) notFound();

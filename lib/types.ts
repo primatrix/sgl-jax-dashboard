@@ -137,6 +137,18 @@ export type CasesResponse = {
   errors: ParseError[];
 };
 
+// Per-day aggregated summary index stored at `_indexes/YYYY-MM-DD.json`.
+// Read-path avoids O(K) GCS GETs per day by fetching this single object.
+export const CASES_INDEX_VERSION = 1;
+
+export type CasesIndex = {
+  version: number;
+  date: string;        // YYYY-MM-DD
+  built_at: string;    // ISO timestamp
+  cases: CaseSummary[];
+  errors: ParseError[];
+};
+
 export type TimeseriesPoint = {
   date: string;
   workload: string;
