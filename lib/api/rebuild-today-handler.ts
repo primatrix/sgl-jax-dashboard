@@ -88,6 +88,11 @@ export async function handleRebuildToday(
       { status: 200 },
     );
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    // 500 path was previously silent — that made the Scheduler 500 untriaged.
+    console.error(`rebuild-today: build/write failed for ${today}:`, e);
+    return NextResponse.json(
+      { error: (e as Error).message, date: today },
+      { status: 500 },
+    );
   }
 }
