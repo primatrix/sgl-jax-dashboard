@@ -52,7 +52,7 @@ export CLOUD_RUN_URL=$(gcloud run services describe "$SERVICE" \
 | Cloud Run 服务名 | `<SERVICE>` |
 | 区域 | `<REGION>`（bucket 与服务同大陆以减少出站费用） |
 | 运行时 SA | `<RUNTIME_SA>` |
-| 运行时 SA 权限 | bucket 上的 `roles/storage.objectViewer`，以及 `_indexes/` 前缀上的 `roles/storage.objectCreator`（条件限定，见缓存索引章节） |
+| 运行时 SA 权限 | bucket 上的 `roles/storage.objectViewer`，以及 `_indexes/` 前缀上的 `roles/storage.objectUser`（条件限定，见缓存索引章节） |
 | 部署 SA | `<DEPLOY_SA>` |
 | 部署 SA 权限 | `roles/run.admin`、`roles/cloudbuild.builds.editor`、`roles/iam.serviceAccountUser`、`roles/artifactregistry.writer`、`roles/storage.admin` |
 | 访问控制 | 公开（`--allow-unauthenticated`），内容为非敏感 TPU CI 指标 |
@@ -160,11 +160,13 @@ Dashboard 用 `gs://<BUCKET>/_indexes/YYYY-MM-DD.json` 作为按天聚合的 sum
 ```bash
 gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member="serviceAccount:$RUNTIME_SA" \
-  --role="roles/storage.objectCreator" \
+  --role="roles/storage.objectUser" \
   --condition="expression=resource.name.startsWith(\"projects/_/buckets/$BUCKET/objects/_indexes/\"),title=indexes_only,description=Limit writes to the dashboard cache prefix"
 ```
 
-最坏情况下 runtime SA 也只能写入 `_indexes/` 前缀，原始 case 数据零写权限。
+> 必须用 `objectUser` 而非 `objectCreator`：今天的索引每 10 分钟由 Scheduler 覆盖写入同一对象，GCS 对覆盖写要求 `storage.objects.create` **加上** `storage.objects.delete`（先删旧版本再创建）。`objectCreator` 只含 `create`，会让首次写入成功但后续覆盖 403。`objectUser` 同时包含 create / delete / get / list / update，仍被 IAM Condition 锁在 `_indexes/` 前缀内。
+
+最坏情况下 runtime SA 也只能在 `_indexes/` 前缀内增删改，原始 case 数据零写权限。
 
 ### 2. 创建 Scheduler 专用 SA，仅授予 Cloud Run invoker
 
@@ -277,7 +279,8 @@ gcloud run deploy "$SERVICE" \
 | Cloud Run URL 返回 403 | `--allow-unauthenticated` 未设置 | 重新部署时加上该参数 |
 | Scheduler job 持续 401 | `REBUILD_AUDIENCE` 与服务 URL 不一致，或 OIDC token audience 配置错误 | 核对 `REBUILD_AUDIENCE` env var 与 `--oidc-token-audience` 都等于 `gcloud run services describe` 返回的根 URL |
 | Scheduler job 持续 403 | `SCHEDULER_SA_EMAIL` env var 与 job 的 `--oidc-service-account-email` 不一致 | 两者必须严格相等（含项目 ID） |
-| `_indexes/` 始终为空 | runtime SA 缺少 objectCreator 条件绑定 | 重新执行"缓存索引"章节第 1 步 |
+| `_indexes/` 始终为空 | runtime SA 缺少 objectUser 条件绑定 | 重新执行"缓存索引"章节第 1 步 |
+| Scheduler attempt 持续返 500，应用 log 报 `storage.objects.delete` 拒绝 | 历史绑定残留为 `objectCreator`（首次写成功、覆盖写 403） | 把绑定替换为 `objectUser`（保留同样的 IAM Condition）|
 
 ## 清理
 
