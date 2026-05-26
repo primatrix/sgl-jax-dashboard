@@ -82,4 +82,17 @@ describe("POST /api/rebuild-today", () => {
     // Index now lives in the bucket.
     expect(client.objects.has("_indexes/2026-05-19.json")).toBe(true);
   });
+
+  it("accepts a lowercase 'bearer' scheme and mixed-case email", async () => {
+    const client = makeFakeGcsClient({});
+    const res = await handleRebuildToday(
+      makeReq({ authorization: "bearer good-token" }),
+      {
+        client,
+        verifyOidc: async () => ({ email: SCHEDULER_EMAIL.toUpperCase() }),
+        now: new Date("2026-05-19T00:00:00Z"),
+      },
+    );
+    expect(res.status).toBe(200);
+  });
 });

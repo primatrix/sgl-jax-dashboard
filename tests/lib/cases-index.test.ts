@@ -119,6 +119,23 @@ describe("buildIndexForDate", () => {
     expect(built.cases).toEqual([]);
     expect(built.errors).toEqual([]);
   });
+
+  it("records per-file download failures and keeps building the rest", async () => {
+    const client = makeFakeGcsClient({
+      "2026-05-18/run-1/ok.json": { body: PERF, updated: "2026-05-18T00:00:00Z" },
+      "2026-05-18/run-1/transient.json": { body: PERF, updated: "2026-05-18T00:00:00Z" },
+    });
+    const realGet = client.getObject.bind(client);
+    client.getObject = async (name: string) => {
+      if (name === "2026-05-18/run-1/transient.json") throw new Error("503 backend error");
+      return realGet(name);
+    };
+    const built = await buildIndexForDate(client, "2026-05-18", new Date("2026-05-19T00:00:00Z"));
+    expect(built.cases).toHaveLength(1);
+    expect(built.errors).toHaveLength(1);
+    expect(built.errors[0].path).toBe("2026-05-18/run-1/transient.json");
+    expect(built.errors[0].reason).toMatch(/download failed/i);
+  });
 });
 
 describe("isIndexStale", () => {

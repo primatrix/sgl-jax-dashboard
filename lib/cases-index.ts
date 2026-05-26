@@ -68,6 +68,12 @@ export async function writeIndex(
   await client.putObject(indexObjectName(index.date), JSON.stringify(index));
 }
 
+// Cap concurrent GCS GETs when rebuilding an index. Cloud Run runtime is
+// 1 vCPU / 512Mi; unbounded `Promise.all` over K objects can exhaust sockets
+// and OOM. 10 is conservative; the wall-time hit at K=1000 is ~100 chunks of
+// ~50ms each = ~5s, still acceptable for the rebuild path.
+const REBUILD_CHUNK_SIZE = 10;
+
 // Build a fresh index for a single date by listing the date prefix, downloading
 // every case file, and reducing each to a summary. Cost: O(K) GCS GETs where K
 // is the number of case files for that date. Intended for cache-miss recovery
@@ -81,14 +87,37 @@ export async function buildIndexForDate(
   const metas = (await client.listObjects(prefix)).filter((m) =>
     isCaseObjectName(m.name),
   );
-  const bodies = await Promise.all(metas.map((m) => client.getObject(m.name)));
+
   const cases: CaseSummary[] = [];
   const errors: ParseError[] = [];
-  metas.forEach((m, i) => {
-    const r = parseCaseSummary(bodies[i], { path: m.name, updated: m.updated });
-    if (r.ok) cases.push(r.value);
-    else errors.push(r.error);
-  });
+
+  for (let i = 0; i < metas.length; i += REBUILD_CHUNK_SIZE) {
+    const chunk = metas.slice(i, i + REBUILD_CHUNK_SIZE);
+    const results = await Promise.all(
+      chunk.map(async (m) => {
+        try {
+          const body = await client.getObject(m.name);
+          return { meta: m, body, error: null as Error | null };
+        } catch (e) {
+          // Per-file download failure (transient 5xx, race with delete, etc.)
+          // must NOT crash the whole day's rebuild — record and move on.
+          return { meta: m, body: null as string | null, error: e as Error };
+        }
+      }),
+    );
+    for (const r of results) {
+      if (r.error) {
+        errors.push({ path: r.meta.name, reason: `download failed: ${r.error.message}` });
+        continue;
+      }
+      const parsed = parseCaseSummary(r.body as string, {
+        path: r.meta.name,
+        updated: r.meta.updated,
+      });
+      if (parsed.ok) cases.push(parsed.value);
+      else errors.push(parsed.error);
+    }
+  }
   return {
     version: CASES_INDEX_VERSION,
     date,
@@ -159,9 +188,11 @@ async function loadIndex(
   const built = await buildIndexForDate(client, date, now);
   try {
     await writeIndex(client, built);
-  } catch {
+  } catch (e) {
     // best-effort: missing write permission or eventual-consistency hiccup
-    // should not break the user-facing read path.
+    // should not break the user-facing read path, but the failure must be
+    // observable — otherwise an IAM misconfig causes silent infinite rebuilds.
+    console.error(`cases-index: failed to write index for ${date}:`, e);
   }
   return built;
 }

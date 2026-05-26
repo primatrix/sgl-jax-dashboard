@@ -43,7 +43,8 @@ function defaultVerifier(): VerifyOidc {
 function bearerToken(req: Request): string | null {
   const h = req.headers.get("authorization") ?? req.headers.get("Authorization");
   if (!h) return null;
-  const m = /^Bearer\s+(.+)$/.exec(h);
+  // RFC 7235: HTTP auth scheme is case-insensitive.
+  const m = /^Bearer\s+(.+)$/i.exec(h);
   return m ? m[1] : null;
 }
 
@@ -61,7 +62,10 @@ export async function handleRebuildToday(
     return NextResponse.json({ error: "invalid id token" }, { status: 401 });
   }
   const expectedEmail = process.env[SCHEDULER_EMAIL_ENV];
-  if (!expectedEmail || identity.email !== expectedEmail) {
+  if (
+    !expectedEmail ||
+    identity.email.toLowerCase() !== expectedEmail.toLowerCase()
+  ) {
     return NextResponse.json({ error: "caller not authorized" }, { status: 403 });
   }
 
