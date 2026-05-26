@@ -37,5 +37,5 @@ jobs:
             --project=${{ vars.GCP_PROJECT }} \
             --service-account=${{ vars.RUNTIME_SA }} \
             --allow-unauthenticated \
-            --set-env-vars=GCS_BUCKET=observability-storage-sglang \
+            --set-env-vars=GCS_BUCKET=${{ vars.GCS_BUCKET }},SCHEDULER_SA_EMAIL=${{ vars.SCHEDULER_SA }},REBUILD_AUDIENCE=${{ vars.REBUILD_AUDIENCE }} \
             --cpu=1 --memory=512Mi --max-instances=3 --min-instances=0

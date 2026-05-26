@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 import { handleCases as handle } from "@/lib/api/cases-handler";
 import type { GcsClient } from "@/lib/gcs";
+import { makeFakeGcsClient } from "../helpers/fixtures";
 
 const PERF = JSON.stringify({
   type: "perf", case: "bench", profile: "p", target: "v6e-4x4",
@@ -10,19 +11,9 @@ const PERF = JSON.stringify({
 });
 
 function fakeClient(): GcsClient {
-  return {
-    async listObjects(prefix) {
-      if (prefix === "2026-05-18/")
-        return [{ name: "2026-05-18/run-1/bench.json", updated: "2026-05-18T00:00:00Z" }];
-      return [];
-    },
-    async getObject() {
-      return PERF;
-    },
-    async statObject(name) {
-      return { name, updated: "2026-05-18T00:00:00Z" };
-    },
-  };
+  return makeFakeGcsClient({
+    "2026-05-18/run-1/bench.json": { body: PERF, updated: "2026-05-18T00:00:00Z" },
+  });
 }
 
 describe("GET /api/cases", () => {
@@ -47,6 +38,12 @@ describe("GET /api/cases", () => {
         throw new Error("401 Anonymous caller does not have storage.objects.list");
       },
       async getObject() {
+        throw new Error("never called");
+      },
+      async tryGetObject() {
+        throw new Error("401 Anonymous caller does not have storage.objects.list");
+      },
+      async putObject() {
         throw new Error("never called");
       },
       async statObject() {

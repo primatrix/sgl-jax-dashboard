@@ -16,14 +16,22 @@ export async function handleCase(rawUrl: string, deps: Deps = {}): Promise<NextR
   if (!path) {
     return NextResponse.json({ error: "path is required" }, { status: 400 });
   }
-  const bucket = process.env.GCS_BUCKET ?? "observability-storage-sglang";
+  const bucket = process.env.GCS_BUCKET ?? "your-gcs-bucket-name";
   try {
     const client = deps.client ?? (await createDefaultClient(bucket));
     const result = await getDetail({ client, path });
     if (!result.ok) {
       return NextResponse.json({ error: result.error.reason }, { status: 404 });
     }
-    return NextResponse.json(result.value, { status: 200 });
+    return NextResponse.json(result.value, {
+      status: 200,
+      headers: {
+        // Case object paths embed both the date and a per-run workload id,
+        // so the underlying object is immutable once written. Safe to cache
+        // aggressively at every layer.
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
   } catch (e) {
     if (looksLikeAuthError(e)) {
       return NextResponse.json(

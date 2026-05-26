@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { listCases, createDefaultClient, type GcsClient } from "@/lib/gcs";
+import { createDefaultClient, type GcsClient } from "@/lib/gcs";
+import { listCases } from "@/lib/cases-index";
 import { buildTimeseries } from "@/lib/timeseries";
 import type { Metric } from "@/lib/types";
 import { metricsForType } from "@/lib/types";
@@ -36,13 +37,18 @@ export async function handleTimeseries(rawUrl: string, deps: Deps = {}): Promise
     return NextResponse.json({ error: `unknown metric: ${rawMetric}` }, { status: 400 });
   }
   const days = Math.max(1, Math.min(180, Number(url.searchParams.get("days") ?? 30)));
-  const bucket = process.env.GCS_BUCKET ?? "observability-storage-sglang";
+  const bucket = process.env.GCS_BUCKET ?? "your-gcs-bucket-name";
   try {
     const client = deps.client ?? (await createDefaultClient(bucket));
     const { cases } = await listCases({ client, days, now: deps.now });
     try {
       const series = buildTimeseries(cases, { case: caseName, profile, target }, metric);
-      return NextResponse.json(series, { status: 200 });
+      return NextResponse.json(series, {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      });
     } catch {
       return NextResponse.json({ error: "no matching case in window" }, { status: 404 });
     }

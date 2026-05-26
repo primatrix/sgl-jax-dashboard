@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { handleTimeseries as handle } from "@/lib/api/timeseries-handler";
-import type { GcsClient } from "@/lib/gcs";
+import { makeFakeGcsClient } from "../helpers/fixtures";
 
 const PERF = (out: number) => JSON.stringify({
   type: "perf", case: "bench", profile: "p", target: "v6e-4x4",
@@ -8,28 +8,11 @@ const PERF = (out: number) => JSON.stringify({
   input_throughput: 1, output_throughput: out, request_throughput: 1,
 });
 
-function client(): GcsClient {
-  const objs: Record<string, { body: string; updated: string }> = {
+function client() {
+  return makeFakeGcsClient({
     "2026-05-17/run-1/bench.json": { body: PERF(100), updated: "2026-05-17T00:00:00Z" },
     "2026-05-18/run-2/bench.json": { body: PERF(200), updated: "2026-05-18T00:00:00Z" },
-  };
-  return {
-    async listObjects(prefix) {
-      return Object.keys(objs)
-        .filter((n) => n.startsWith(prefix))
-        .map((name) => ({ name, updated: objs[name].updated }));
-    },
-    async getObject(name) {
-      const o = objs[name];
-      if (!o) throw new Error("not found");
-      return o.body;
-    },
-    async statObject(name) {
-      const o = objs[name];
-      if (!o) throw new Error("not found");
-      return { name, updated: o.updated };
-    },
-  };
+  });
 }
 
 describe("GET /api/timeseries", () => {
